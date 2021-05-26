@@ -54,18 +54,50 @@ for instance in cluster_member:
 print(f"reader: {reader}")
 print(f"writer: {writer}")
 
-# FIXME: 시작전에 db status 확인하기
+response = client.describe_db_instances(
+    DBInstanceIdentifier=reader['DBInstanceIdentifier'],
+)
+
+if response['DBInstances'][0]['DBInstanceClass'] == TYPE_INSTANCE:
+    print('번경하려는 DB 사이즈가 동일합니다.')
+    exit(-1)
+
+if response['DBInstances'][0]['DBInstanceStatus'] != 'available':
+    print('reader DB 상태가 available 상태가 아닙니다.')
+    exit(-1)
+
+response = client.describe_db_instances(
+    DBInstanceIdentifier=writer['DBInstanceIdentifier'],
+)
+
+if response['DBInstances'][0]['DBInstanceStatus'] != 'available':
+    print('writer DB 상태가 available 상태가 아닙니다.')
+    exit(-1)
 
 response = client.modify_db_instance(
     DBInstanceIdentifier=reader['DBInstanceIdentifier'],
-    #DBInstanceClass='db.t3.medium',
-    DBInstanceClass='db.t3.large',
+    DBInstanceClass=TYPE_INSTANCE,
     ApplyImmediately=True,
 )
 
 print(response)
 
-time.sleep(5)
+loop = 100
+pending_item = {'initial': ''}
+while not (len(pending_item) == 0 or loop < 0):
+    time.sleep(5)
+    response = client.describe_db_instances(
+        DBInstanceIdentifier=reader['DBInstanceIdentifier'],
+    )
+
+    pending_item = response['DBInstances'][0]['PendingModifiedValues']
+    loop -= 1
+
+if loop <= 0:
+    print('DB 사이즈 변경이 너무 오래 대기중입니다.')
+    print(response)
+    exit(-1)
+
 loop = 100
 while True:
     response = client.describe_db_instances(
@@ -82,7 +114,7 @@ while True:
         time.sleep(10)
         loop -= 1
         continue
-    elif status == 'Configuring-enhanced-monitoring':
+    elif status == 'configuring-enhanced-monitoring':
         print('c', end='')
         time.sleep(10)
         loop -= 1
